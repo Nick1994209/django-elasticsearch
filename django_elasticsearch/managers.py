@@ -5,6 +5,11 @@ try:
 except ImportError:  # python < 2.7
     from django.utils import importlib
 
+try:
+  basestring #py2
+except NameError:
+  basestring = str #py3
+
 from django.conf import settings
 try:
     from django.utils import importlib

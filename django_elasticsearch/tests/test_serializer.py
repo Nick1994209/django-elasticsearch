@@ -9,6 +9,11 @@ from django_elasticsearch.serializers import EsSimpleJsonSerializer
 from test_app.models import Dummy
 from test_app.models import Test2Model
 
+try:
+  basestring #py2
+except NameError:
+  basestring = str #py3
+
 
 class CustomSerializer(EsJsonSerializer):
     def serialize_char(self, instance, field_name):

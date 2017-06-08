@@ -12,7 +12,7 @@ INSTALL
 
 * Install django_elasticsearch
     ```shell
-    pip install git+https://github.com/liberation/django_elasticsearch.git
+    pip install git+https://github.com/Nick1994209/django-elasticsearch.git
     ```
     **Note**: no pypy package yet
 
