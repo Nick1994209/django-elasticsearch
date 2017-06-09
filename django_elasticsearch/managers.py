@@ -73,7 +73,7 @@ class ElasticsearchManager():
         self._mapping = None
 
     def get_index(self):
-        return self.model.Elasticsearch.index
+        return self.model.Elasticsearch.index or self.model._meta.db_table
 
     @property
     def index(self):
@@ -334,9 +334,12 @@ class ElasticsearchManager():
         return diff
 
     def create_index(self, ignore=True):
-        body = {}
+        body = {'settings': {}}
         if hasattr(settings, 'ELASTICSEARCH_SETTINGS'):
             body['settings'] = settings.ELASTICSEARCH_SETTINGS
+        model_analysis = getattr(self.model.Elasticsearch, 'analysis',  None)
+        if model_analysis:
+            body['settings']['analysis'] = model_analysis
 
         es_client.indices.create(self.index,
                                  body=body,
@@ -346,13 +349,19 @@ class ElasticsearchManager():
                                       body=self.make_mapping())
 
     def reindex_all(self, queryset=None):
-        q = queryset or self.model.objects.all()
+        q = queryset or self.model.objects.iterator()
         for instance in q:
             instance.es.do_index()
 
+    def delete_index(self):
+        try:
+            es_client.indices.delete_mapping(index=self.index,
+                                             doc_type=self.doc_type,
+                                             ignore=404)
+        except AttributeError:
+            es_client.indices.delete(index=self.index, ignore=[400, 404])
+
     def flush(self):
-        es_client.indices.delete_mapping(index=self.index,
-                                         doc_type=self.doc_type,
-                                         ignore=404)
+        self.delete_index()
         self.create_index()
         self.reindex_all()

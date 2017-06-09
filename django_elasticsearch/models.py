@@ -26,7 +26,8 @@ class EsIndexable(Model):
         abstract = True
 
     class Elasticsearch:
-        index = getattr(settings, 'ELASTICSEARCH_DEFAULT_INDEX', 'django')
+        index = None
+        analysis = None
         doc_type = None  # defaults to 'model-{model.name}'
         mapping = None
         serializer_class = EsJsonSerializer
@@ -37,6 +38,7 @@ class EsIndexable(Model):
         suggest_fields = None
         # http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/search-suggesters-completion.html
         completion_fields = None
+        ordering = None
 
     def __init__(self, *args, **kwargs):
         super(EsIndexable, self).__init__(*args, **kwargs)

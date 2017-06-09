@@ -29,11 +29,7 @@ class EsQueryset(QuerySet):
         self.facets_fields = None
         self.suggest_fields = None
 
-        # model.Elasticsearch.ordering -> model._meta.ordering -> _score
-        if hasattr(self.model.Elasticsearch, 'ordering'):
-            self.ordering = self.model.Elasticsearch.ordering
-        else:
-            self.ordering = getattr(self.model._meta, 'ordering', None)
+        self.ordering = getattr(self.model.Elasticsearch, 'ordering', None)
         self.fuzziness = fuzziness
         self.ndx = None
         self._query = ''
