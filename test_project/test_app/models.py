@@ -1,8 +1,11 @@
 from datetime import datetime
 
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import User
+from elasticsearch import ElasticsearchException
 
+from .. import elasticsearch_analysis as es_analysis
 from django_elasticsearch.models import EsIndexable
 from django_elasticsearch.serializers import EsJsonSerializer
 
@@ -117,3 +120,56 @@ class Test2Model(EsIndexable):
     @property
     def abstract_prop(self):
         return 'weez'
+
+
+class News(EsIndexable, models.Model):
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT
+    )
+    img = models.ForeignKey(
+        'Image',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL
+    )
+    is_published = models.BooleanField(
+        default=False,
+    )
+    is_deleted = models.BooleanField(default=False)
+    publish_date = models.DateTimeField(
+        default=datetime.now,
+    )
+    created = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    modified = models.DateTimeField(auto_now=True, verbose_name='Дата изменения')
+    is_main = models.BooleanField(default=False, verbose_name='Главная', editable=False)
+
+    class Elasticsearch(EsIndexable.Elasticsearch):
+        fields = ('id', 'title', 'stripped_content', 'label', 'is_published')
+        analysis = es_analysis.analysis
+        mappings = {
+            'stripped_content': {
+                'analyzer': es_analysis.ngram_analyzer,
+                'search_analyzer': es_analysis.standard_analyzer,
+            },
+            'title': {
+                'analyzer': es_analysis.ngram_analyzer,
+                'search_analyzer': es_analysis.standard_analyzer,
+            },
+        }
+        fuzziness = 2
+
+    @classmethod
+    def search(cls, query, limit=10):
+
+        try:
+            news_from_es = cls.es.search(query).filter(is_published=True)[:limit]
+        except ElasticsearchException:
+            print('Error searching news in elastic for query %s', query)
+            return []
+        news_ids = [article['id'] for article in news_from_es]
+        news = cls.objects.filter(id__in=news_ids).select_related('author', 'img', 'label')
+        ordered_news = sorted(news, key=lambda article: news_ids.index(article.id))
+        return news

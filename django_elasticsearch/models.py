@@ -27,18 +27,20 @@ class EsIndexable(Model):
 
     class Elasticsearch:
         index = None
-        analysis = None
         doc_type = None  # defaults to 'model-{model.name}'
-        mapping = None
+        mappings = None
         serializer_class = EsJsonSerializer
         fields = None
+        search_fields = None
         facets_limit = 10
         facets_fields = None
         # http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/search-suggesters-term.html
         suggest_fields = None
         # http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/search-suggesters-completion.html
         completion_fields = None
+        analysis = None  # use analysis in settings before create index
         ordering = None
+        fuzziness = None
 
     def __init__(self, *args, **kwargs):
         super(EsIndexable, self).__init__(*args, **kwargs)

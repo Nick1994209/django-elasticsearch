@@ -1,24 +1,30 @@
 # -*- coding: utf-8 -*-
 import json
+
+from django.conf import settings
+from django.db.models import FieldDoesNotExist
+
+from django_elasticsearch.client import es_client
+from django_elasticsearch.query import EsQueryset
+from django_elasticsearch.serializers import EsJsonSerializer
+
+from tqdm import tqdm
+
 try:
     import importlib
 except ImportError:  # python < 2.7
     from django.utils import importlib
 
 try:
+    from django.utils import importlib
+except:
+    import importlib
+
+try:
   basestring #py2
 except NameError:
   basestring = str #py3
 
-from django.conf import settings
-try:
-    from django.utils import importlib
-except:
-    import importlib
-from django.db.models import FieldDoesNotExist
-
-from django_elasticsearch.query import EsQueryset
-from django_elasticsearch.client import es_client
 
 # Note: we use long/double because different db backends
 # could store different sizes of numerics ?
@@ -91,7 +97,7 @@ class ElasticsearchManager():
         return es_client.ping()
 
     def get_serializer(self, **kwargs):
-        serializer = self.model.Elasticsearch.serializer_class
+        serializer = getattr(self.model.Elasticsearch, 'serializer_class', EsJsonSerializer)
         if isinstance(serializer, basestring):
             module, kls = self.model.Elasticsearch.serializer_class.rsplit(".", 1)
             mod = importlib.import_module(module)
@@ -175,7 +181,8 @@ class ElasticsearchManager():
 
     @property
     def queryset(self):
-        return EsQueryset(self.model)
+        model_fuzziness = getattr(self.model.Elasticsearch, 'fuzziness', None)
+        return EsQueryset(self.model, fuzziness=model_fuzziness)
 
     def search(self, query,
                facets=None, facets_limit=None, global_facets=True,
@@ -337,10 +344,9 @@ class ElasticsearchManager():
         body = {'settings': {}}
         if hasattr(settings, 'ELASTICSEARCH_SETTINGS'):
             body['settings'] = settings.ELASTICSEARCH_SETTINGS
-        model_analysis = getattr(self.model.Elasticsearch, 'analysis',  None)
+        model_analysis = getattr(self.model.Elasticsearch, 'analysis', None)
         if model_analysis:
             body['settings']['analysis'] = model_analysis
-
         es_client.indices.create(self.index,
                                  body=body,
                                  ignore=ignore and 400)
@@ -350,7 +356,7 @@ class ElasticsearchManager():
 
     def reindex_all(self, queryset=None):
         q = queryset or self.model.objects.iterator()
-        for instance in q:
+        for instance in tqdm(q):
             instance.es.do_index()
 
     def delete_index(self):
@@ -361,7 +367,7 @@ class ElasticsearchManager():
         except AttributeError:
             es_client.indices.delete(index=self.index, ignore=[400, 404])
 
-    def flush(self):
+    def recreate(self):
         self.delete_index()
         self.create_index()
         self.reindex_all()

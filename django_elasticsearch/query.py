@@ -35,6 +35,8 @@ class EsQueryset(QuerySet):
         self._query = ''
         self._deserialize = False
 
+        self.searched_types = ('text', )
+
         self._start = 0
         self._stop = None
 
@@ -116,28 +118,26 @@ class EsQueryset(QuerySet):
         return len(self._result_cache)
 
     def make_search_body(self):
-        body = {}
-        search = {}
-
-        if self.fuzziness is None:  # beware, could be 0
-            fuzziness = getattr(settings, 'ELASTICSEARCH_FUZZINESS', 0.5)
-        else:
+        if self.fuzziness:  # beware, could be 0
             fuzziness = self.fuzziness
+        else:
+            fuzziness = getattr(settings, 'ELASTICSEARCH_FUZZINESS', 0.5)
 
         if self._query:
-            search['query'] = {
-                'match': {
-                    '_all': {
-                        'query': self._query,
-                        'fuzziness': fuzziness
-                    }
+            search_fields = (getattr(self.model.Elasticsearch, 'search_fields', None)
+                             or self.get_search_fields())
+            query = {
+                'multi_match': {
+                    'query': self._query,
+                    'fields': search_fields,
+                    'fuzziness': fuzziness,
                 },
             }
 
         if self.filters:
             # TODO: should we add _cache = true ?!
-            search['filter'] = {}
-            mapping = self.model.es.get_mapping()
+            filters = {}
+            mapping = self.model.es.make_mapping()
 
             for field, value in self.filters.items():
                 try:
@@ -158,16 +158,16 @@ class EsQueryset(QuerySet):
                     value = value.id
 
                 if operator == 'exact':
-                    filtr = {'bool': {'must': [{'term': {field_name: value}}]}}
+                    filtr = {'bool': {'filter': [{'term': {field_name: value}}]}}
 
                 elif operator == 'not':
                     filtr = {'bool': {'must_not': [{'term': {field_name: value}}]}}
 
                 elif operator == 'should':
-                    filtr = {'bool': {operator: [{'term': {field_name: value}}]}}
+                    filtr = {'bool': {'should': [{'term': {field_name: value}}]}}
 
                 elif operator == 'contains':
-                    filtr = {'query': {'match': {field_name: {'query': value}}}}
+                    filtr = {'query': {'match': [{field_name: {'query': value}}]}}
 
                 elif operator in ['gt', 'gte', 'lt', 'lte']:
                     filtr = {'bool': {'must': [{'range': {field_name: {
@@ -184,13 +184,32 @@ class EsQueryset(QuerySet):
                     else:
                         filtr = {'exists': {'field': field_name}}
 
-                nested_update(search['filter'], filtr)
+                nested_update(filters, filtr)
 
-            body['query'] = {'filtered': search}
+            body = {'query': {'bool': {'must': query}}}
+            for filter_type, value in filters.items():
+                body['query'].setdefault(filter_type, {})
+                body['query'][filter_type].update(value)
+
         else:
-            body = search
+            body = {'query': query}
 
         return body
+
+    def get_search_fields(self):
+        search_fields = []
+        mapping_fields = self.model.es.get_mapping()
+
+        def recursive_get_fields(fields, father_key=''):
+            for key, value in fields.items():
+                key = key if not father_key else father_key + '.' + key
+                if value.get('type') and value['type'] in self.searched_types:
+                    search_fields.append(key)
+                elif value.get('properties'):  # embedded document
+                    recursive_get_fields(value['properties'], father_key=key)
+
+        recursive_get_fields(mapping_fields)
+        return search_fields
 
     @property
     def is_evaluated(self):
@@ -281,7 +300,7 @@ class EsQueryset(QuerySet):
         self._max_score = r['hits']['max_score']
 
         self._total = r['hits']['total']
-
+        print(r)
         return
 
     def query(self, query):

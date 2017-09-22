@@ -38,7 +38,7 @@ class ElasticsearchFilterBackend(OrderingFilter, DjangoFilterBackend):
 
             filterable = getattr(view, 'filter_fields', [])
             filters = dict([(k, v)
-                            for k, v in request.GET.iteritems()
+                            for k, v in request.GET.items()
                             if k in filterable])
 
             q = queryset.query(query).filter(**filters)
